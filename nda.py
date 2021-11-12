@@ -9,7 +9,7 @@ schema classes and methods
 import numpy as np
 import datajoint as dj
 
-schema = dj.schema('ramosaj_basil_nda', create_tables=True)
+schema = dj.schema('interneuron_nda', create_tables=True)
 schema.spawn_missing_classes()
 
 import coregister.solve as cs
