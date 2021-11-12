@@ -25,6 +25,8 @@ from .func import get_timing_offset,hamming_filter,resize_movie,slice_array
 ##TODO: DOUBLE CHECK ALL DATA, make sure it is what is expected
 ## 
 
+
+
 params = dict(skip_duplicates=True,ignore_extra_fields=True)
 
 @schema
@@ -42,7 +44,23 @@ class Scan(dj.Manual):
     fps                  : float                        # frames per second (Hz)
     """
     
-        
+    scan_keys = [
+        {'animal_id': 21617, 'session': 6, 'scan_idx': 3}, 
+        {'animal_id': 21617, 'session': 6, 'scan_idx': 3}, 
+        {'animal_id': 21617, 'session': 6, 'scan_idx': 6}, 
+        {'animal_id': 21617, 'session': 7, 'scan_idx': 4}, 
+        {'animal_id': 21617, 'session': 7, 'scan_idx': 5}, 
+        {'animal_id': 21617, 'session': 7, 'scan_idx': 8}, 
+        {'animal_id': 21617, 'session': 7, 'scan_idx': 9}, 
+        {'animal_id': 21617, 'session': 8, 'scan_idx': 5}, 
+        {'animal_id': 21617, 'session': 8, 'scan_idx': 6}, 
+        {'animal_id': 21617, 'session': 8, 'scan_idx': 8}, 
+        {'animal_id': 21617, 'session': 8, 'scan_idx': 11}, 
+        {'animal_id': 21617, 'session': 9, 'scan_idx': 5}, 
+        {'animal_id': 21617, 'session': 9, 'scan_idx': 6}, 
+        {'animal_id': 21617, 'session': 9, 'scan_idx': 7}, 
+        {'animal_id': 21617, 'session': 9, 'scan_idx': 8}
+    ]
     @property
     def key_source(self):
         return (reso.ScanInfo & self.scan_keys).proj('nframes','nfields','fps')
@@ -73,8 +91,8 @@ class Field(dj.Manual):
       
     @property
     def key_source(self):
-        return ((reso.ScanInfo & Scan.proj() & {'animal_id': 21617}) * \
-                    reso.ScanInfo.Field).proj('px_width','px_height','um_width','um_height',
+        return ((meso.ScanInfo & Scan.proj() & {'animal_id': 21617}) * \
+                    meso.ScanInfo.Field).proj('px_width','px_height','um_width','um_height',
                                               field_x='x',field_y='y',field_z='z')
     
     @classmethod
@@ -145,7 +163,7 @@ class ManualPupil(dj.Manual):
         for key in cls.key_source:
             stored_pupilinfo = (RawManualPupil() & key).fetch1()
             pupil_times = stored_pupilinfo['pupil_times']
-            frame_times,ndepths = (FrameTimes() & key).fetch1('frame_times','ndepths')
+            frame_times,ndepths = (ScanTimes()  & key).fetch1('frame_times','ndepths')
             top_frame_scan_times_beh_clock = frame_times[::ndepths]
             raw_pupil_x = [np.nan if entry is None else entry[0] for entry in stored_pupilinfo['pupil_x']]
             raw_pupil_y = [np.nan if entry is None else entry[1] for entry in stored_pupilinfo['pupil_y']]
@@ -211,7 +229,7 @@ class Treadmill(dj.Manual):
             tread_time = tread_time.astype(np.float)
             tread_vel = tread_vel.astype(np.float)
             tread_interp = interp1d(tread_time, tread_vel, kind='linear', bounds_error=False, fill_value=np.nan)
-            frame_times,depths = (FrameTimes() & key).fetch1('frame_times','ndepths')
+            frame_times,depths = (ScanTimes()  & key).fetch1('frame_times','ndepths')
             interp_tread_vel = tread_interp(frame_times[::depths])
             treadmill_key = {
                 'session': key['session'],
@@ -222,7 +240,7 @@ class Treadmill(dj.Manual):
         
 ## TODO: ScanTimes
 @schema
-class FrameTimes(dj.Manual):
+class ScanTimes(dj.Manual):
     """
     Class methods not available outside of BCM pipeline environment
     """
@@ -241,7 +259,7 @@ class FrameTimes(dj.Manual):
     def fill(cls):
         for key in cls.key_source:
             frame_times = (stimulus.BehaviorSync() & key).fetch('frame_times')[0]
-            ndepths = len(dj.U('z') &  (reso.ScanInfo().Field() & key))
+            ndepths = len(dj.U('z') &  (meso.ScanInfo().Field() & key))
             cls.insert1({**key,'frame_times':frame_times - frame_times[0],'ndepths':ndepths},**params)
 
 @schema
@@ -267,7 +285,7 @@ class Stimulus(dj.Manual):
             full_stimulus = None
             full_flips = None
 
-            num_depths = np.unique((reso.ScanInfo.Field & key).fetch('z')).shape[0]
+            num_depths = np.unique((meso.ScanInfo.Field & key).fetch('z')).shape[0]
             scan_times = (stimulus.Sync & key).fetch1('frame_times').squeeze()[::num_depths]
             target_hz = 1/np.median(np.diff(scan_times))
             trial_data = ((stimulus.Trial & key) * stimulus.Condition).fetch('KEY', 'stimulus_type', order_by='trial_idx ASC')
@@ -306,6 +324,12 @@ class Stimulus(dj.Manual):
                     full_stimulus = np.concatenate((full_stimulus, movie), axis=time_axis) if full_stimulus is not None else movie
                     full_flips = np.concatenate((full_flips, flip_times.squeeze())) if full_flips is not None else flip_times.squeeze()
                 
+                elif stim_type == 'stimulus.Fancy':
+                    pass 
+                
+                elif stim_type == 'stimulus.Frame':
+                    pass 
+                
                 else:
                     raise Exception(f'Error: stimulus type {stim_type} not understood')
 
@@ -342,7 +366,7 @@ class Trial(dj.Manual):
     end_idx              : int unsigned                 # index of field 1 scan frame at end of trial
     start_frame_time     : double                       # start time of stimulus frame relative to scan start (seconds)
     end_frame_time       : double                       # end time of stimulus frame relative to scan start (seconds)
-    frame_times          : longblob                     # full vector of stimulus frame times relative to scan start (seconds)
+    stim_times           : longblob                     # full vector of stimulus frame times relative to scan start (seconds)
     condition_hash       : char(20)                     # 120-bit hash (The first 20 chars of MD5 in base64)
     """
     @property 
@@ -353,7 +377,7 @@ class Trial(dj.Manual):
     def fill(cls):
         for key in cls.key_source:
             data = ((stimulus.Trial() & key) * stimulus.Condition()).fetch(as_dict=True)
-            ndepths = len(dj.U('z') & (reso.ScanInfo().Field() & key))
+            ndepths = len(dj.U('z') & (meso.ScanInfo().Field() & key))
 
             offset = get_timing_offset(key)
             frame_times = (stimulus.Sync() & key).fetch1('frame_times')
@@ -391,7 +415,112 @@ class Trial(dj.Manual):
             cls.insert(data,**params)
 
 
- ##TODO: check stimulus tables 
+@schema
+class Fancy(dj.Manual):
+    pass 
+
+@schema
+class Trippy(dj.Manual):
+    definition = """
+    # randomized curvy dynamic gratings
+    condition_hash       : char(20)                     # 120-bit hash (The first 20 chars of MD5 in base64)
+    ---
+    fps                  : decimal(6,3)                 # display refresh rate (Hz)
+    rng_seed             : double                       # random number generate seed
+    packed_phase_movie   : longblob                     # phase movie before spatial and temporal interpolation
+    tex_ydim             : smallint                     # (pixels) texture height
+    tex_xdim             : smallint                     # (pixels) texture width
+    duration             : float                        # (s) trial duration
+    xnodes               : tinyint                      # x dimension of low-res phase movie
+    ynodes               : tinyint                      # y dimension of low-res phase movie
+    up_factor            : tinyint                      # spatial upscale factor
+    temp_freq            : float                        # (Hz) temporal frequency if the phase pattern were static
+    temp_kernel_length   : smallint                     # length of Hanning kernel used for temporal filter. Controls the rate of change of the phase pattern.
+    spatial_freq         : float                        # (cy/point) approximate max. The actual frequencies may be higher.
+    movie                : longblob                     # rendered movie (H X W X T)
+    """
+    @property 
+    def key_source(cls):
+        return (stimulus.Trial().proj('condition_hash') * stimulus.Trippy & Scan().platinum_scans) 
+
+    @classmethod
+    def fill(cls):
+        cls.insert(cls.key_source,**params)
+ 
+
+class Frame(dj.Manual):
+    pass 
+
+@schema
+class Clip(dj.Manual):
+    definition = """
+    # Movie clip condition
+    condition_hash       : char(20)                     # 120-bit hash (The first 20 chars of MD5 in base64)
+    ---
+    movie_name           : char(250)                    # full clip source
+    duration             : decimal(7,3)                 # duration of clip (seconds)
+    clip                 : longblob                     # clip used for stimulus (T x H x W)
+    short_movie_name     : char(15)                     # clip type (cinematic, sports1m, rendered)
+    fps                  : float                        # original framerate of clip
+    """
+
+    @property 
+    def key_source(cls):
+        return Scan().platinum_scans
+    @classmethod
+    def fill(cls):
+        for key in cls.key_source:
+            movie_mapping = {
+                'poqatsi':"Cinematic",
+                'MadMax':   "Cinematic",
+                'naqatsi':  "Cinematic",
+                'koyqatsi': "Cinematic",
+                'matrixrv': "Cinematic",
+                'starwars': "Cinematic",
+                'matrixrl': "Cinematic",
+                'matrix':   "Cinematic",
+            }
+
+            long_movie_mapping = {
+                'poqatsi':  "Powaqqatsi: Life in Transformation (1988)",
+                'MadMax':   "Mad Max: Fury Road (2015)",
+                'naqatsi':  "Naqoyqatsi: Life as War (2002)",
+                'koyqatsi': "Koyaanisqatsi: Life Out of Balance (1982)",
+                'matrixrv': "The Matrix Revolutions (2003)",
+                'starwars': "Star Wars: Episode VII - The Force Awakens (2015)",
+                'matrixrl': "The Matrix Reloaded (2003)",
+                'matrix':   "The Matrix (1999)"}
+
+            short_mapping = {'bigrun':'Rendered','finalrun':'Rendered','sports1m':'sports1m'}
+            short_mapping = {**short_mapping,**movie_mapping}
+            trials = stimulus.Trial() & key 
+            movie_df = (trials.proj('condition_hash') * stimulus.Movie().Clip() * stimulus.Clip() * stimulus.Movie()).fetch(format='frame')
+            movie_df = movie_df.reset_index()
+            movie_df['new_movie_name'] = movie_df.apply(lambda x: x['parent_file_name'][:-4],axis=1)
+            movie_df['new_movie_name'] = movie_df.apply(lambda x: x['new_movie_name'] if x['movie_name'] not in long_movie_mapping else long_movie_mapping[x['movie_name']],axis=1)
+            for entry in movie_df.to_dict('records'): 
+                clip, skip_time, cut_after, hz = entry['clip'],entry['skip_time'],entry['cut_after'],entry['frame_rate']
+                
+                vid = imageio.get_reader(io.BytesIO(clip.tobytes()), 'ffmpeg')
+                _hz = 30
+                frames = np.stack([frame.mean(axis=-1) for frame in vid], 0)
+                total_frames = frames.shape[0]
+                skip_time, cut_after = float(skip_time), float(cut_after)
+                _start_frame = round(skip_time * _hz)
+                _end_frame = _start_frame + round(cut_after * _hz)
+                start_frame = min(math.ceil(_start_frame / _hz * hz), total_frames)
+                end_frame = min(math.floor(_end_frame / _hz * hz), total_frames)
+                cut_clip = frames[start_frame:end_frame,:,:]
+                movie_name = movie_df[lambda df: df['condition_hash'] == entry['condition_hash']]['new_movie_name'].iloc[0]
+                pack = {'condition_hash':entry['condition_hash'],
+                        'movie_name':movie_name,
+                        'duration':entry['cut_after'],
+                        'clip_number':entry['clip_number'],
+                        'clip':cut_clip,
+                        'short_movie_name':short_mapping[entry['movie_name']],
+                        'fps':entry['frame_rate']}
+                cls.insert1(pack,**params)
+
 @schema
 class Monet(dj.Manual):
     definition = """
@@ -442,7 +571,7 @@ class MeanIntensity(dj.Manual):
     
     @property
     def key_source(self):
-        return reso.Quality.MeanIntensity & {'animal_id':8973,'channel':1} & Scan
+        return meso.Quality.MeanIntensity & {'animal_id':8973,'channel':1} & Scan
     
     @classmethod
     def fill(cls):
@@ -463,8 +592,8 @@ class SummaryImages(dj.Manual):
     
     @property
     def key_source(self):
-        return reso.SummaryImages.Correlation.proj(correlation='correlation_image') * \
-               reso.SummaryImages.Average.proj(average='average_image') & {'animal_id': 21617} & Scan
+        return meso.SummaryImages.Correlation.proj(correlation='correlation_image') * \
+               meso.SummaryImages.Average.proj(average='average_image') & {'animal_id': 21617} & Scan
     
     @classmethod
     def fill(cls):
@@ -582,7 +711,7 @@ class Segmentation(dj.Manual):
 
     @property
     def key_source(self):
-        return reso.Segmentation.Mask & self.segmentation_key & Field
+        return meso.Segmentation.Mask & self.segmentation_key & Field
 
     @classmethod
     def fill(cls):
@@ -605,7 +734,7 @@ class Fluorescence(dj.Manual):
 
     @property
     def key_source(self):
-        return reso.Fluorescence.Trace & self.segmentation_key & Field
+        return meso.Fluorescence.Trace & self.segmentation_key & Field
     
     @classmethod
     def fill(cls):
@@ -636,7 +765,7 @@ class ScanUnit(dj.Manual):
     
     @property
     def key_source(self):
-        return (reso.ScanSet.Unit * reso.ScanSet.UnitInfo) & self.segmentation_key & Field  
+        return (meso.ScanSet.Unit * meso.ScanSet.UnitInfo) & self.segmentation_key & Field  
     
     @classmethod
     def fill(cls):
@@ -658,7 +787,7 @@ class Activity(dj.Manual):
 
     @property
     def key_source(self):
-        return reso.Activity.Trace & self.segmentation_key & Field
+        return meso.Activity.Trace & self.segmentation_key & Field
 
     
     @classmethod
@@ -687,7 +816,7 @@ class StackUnit(dj.Manual):
     
     @property
     def key_source(self):
-        return reso.StackCoordinates.UnitInfo & self.segmentation_key & Stack.proj() & Field
+        return meso.StackCoordinates.UnitInfo & self.segmentation_key & Stack.proj() & Field
 
     
     @classmethod
@@ -730,7 +859,7 @@ class MaskClassification(dj.Manual):
 
     @property
     def key_source(self):
-        return reso.MaskClassification.Type.proj(mask_type='type') & {'animal_id': 21617, 'segmentation_method': 6} & Scan
+        return meso.MaskClassification.Type.proj(mask_type='type') & {'animal_id': 21617, 'segmentation_method': 6} & Scan
 
     @classmethod
     def fill(cls):
