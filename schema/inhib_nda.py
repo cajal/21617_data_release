@@ -11,12 +11,13 @@ from scipy.interpolate import interp1d
 import datajoint as dj
 
 # BCM private schemas 
-from stimline import tune
-from stimulus import stimulus
-from pipeline import experiment,meso,fuse, stack, treadmill
-pupil = dj.create_virtual_module('pupil',"pipeline_eye")
+# from stimline import tune
+# from stimulus import stimulus
+# from pipeline import experiment,meso,fuse, stack, treadmill
+# pupil = dj.create_virtual_module('pupil',"pipeline_eye")
 
-schema = dj.schema('21617_release_nda', create_tables=True)
+# schema = dj.schema('21617_release_nda', create_tables=True) # lock tables after export
+schema = dj.schema('21617_release_nda', create_tables=False)
 schema.spawn_missing_classes()
 
 params = {'ignore_extra_fields':True,
