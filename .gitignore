@@ -1,0 +1,7 @@
+__pycache__/*
+schema/__pycache__/*
+.ipynb_checkpoints/*
+export_notebooks/*
+methods_notebooks/*
+tutorial_notebooks/pipeline_config.json
+tutorial_notebooks/.ipynb_checkpoints/*
