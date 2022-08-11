@@ -16,8 +16,12 @@ import datajoint as dj
 # from pipeline import experiment,meso,fuse, stack, treadmill
 # pupil = dj.create_virtual_module('pupil',"pipeline_eye")
 
+# BCM export schema reference
 # schema = dj.schema('21617_release_nda', create_tables=True) # lock tables after export
-schema = dj.schema('21617_release_nda', create_tables=False)
+
+# packaged schema reference
+schema = dj.schema('release_nda_db', create_tables=False, create_schema=False)
+
 schema.spawn_missing_classes()
 
 params = {'ignore_extra_fields':True,
