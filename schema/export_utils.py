@@ -16,10 +16,10 @@ sys.path.append('..')
 import schema.inhib_nda as nda
 
 # private BCM schemas
-from commons import lab
-from pipeline.utils import h5
-from pipeline import experiment,meso,stack
-from stimulus import stimulus
+# from commons import lab
+# from pipeline.utils import h5
+# from pipeline import experiment,meso,stack
+# from stimulus import stimulus
 # pixeltune = dj.create_virtual_module('pipeline_pixeltune','pipeline_pixeltune')
 
 
